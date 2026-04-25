@@ -29,7 +29,7 @@
 
 // Which Grid - SIXTEEN, SIXTYFOUR, ONETWENTYEIGHT, TWOFIFTYSIX
 #ifndef GRIDCOUNT
-#define GRIDCOUNT SIXTYFOUR
+#define GRIDCOUNT ONETWENTYEIGHT
 #endif
 
 #if GRIDCOUNT == SIXTEEN
@@ -90,9 +90,9 @@ const uint8_t addrRowTwo[4] = {0x33,0x31,0x3E,0x36};
 #endif
 
 #if BOARDTYPE == PICO
-  #define I2C_BUS i2c1
-  #define I2C_SDA 26
-  #define I2C_SCL 27
+  #define I2C_BUS i2c0
+  #define I2C_SDA 4
+  #define I2C_SCL 5
   #define LED_PIN 26  //  LED1
   #define LED_PIN2 25 //  LED2
 #endif
@@ -115,10 +115,10 @@ const uint8_t addrRowTwo[4] = {0x33,0x31,0x3E,0x36};
 
 // use gammaTable and gammaAdj below to adjust levels
 
-// White
-#define R 255
-#define G 255
-#define B 255
+// Warm White
+#define R 250
+#define G 180
+#define B 120
 
 // Seafoam / Mint Green
 // #define R 73
