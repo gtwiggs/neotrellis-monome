@@ -5,6 +5,11 @@ Hardware used:
 - [Adafruit Triple-axis Magnetometer - LIS2MDL](https://www.adafruit.com/product/4488)
 - [Adafruit LSM6DS3TR-C 6-DoF Accel + Gyro IMU](https://www.adafruit.com/product/4503)
 
+Event threshold is configurable in `device.cpp`:
+```cpp
+#define ACCEL_CHANGE_THRESHOLD 0.05f // Minimum change to trigger event
+```
+
 ## Read Values
 
 In the iii Lua scripting mode, you can use the `accel_read()` function to get the current accelerometer values. This function returns three floating-point numbers representing the acceleration in the X, Y, and Z axes (in units of g, where 1g ≈ 9.81 m/s²).
@@ -32,6 +37,10 @@ print("Roll:", roll, "Pitch:", pitch, "Yaw:", yaw)
 ## Event Notification
 
 The accelerometer is polled every 50ms, and when the acceleration changes by more than 0.05g in any axis, it triggers the `event_accel` callback with the current acceleration values and calculated orientation.
+
+- **Acceleration units**: g (1g ≈ 9.81 m/s²)
+- **Orientation units**: Degrees (-180° to +180° for roll/pitch, 0° to 360° for yaw)
+
 
 ```lua
 -- Handle accelerometer / magnetometer events
@@ -82,22 +91,6 @@ function event_accel(ax, ay, az, roll, pitch, yaw)
 end
 ```
 
-## Key Features
-
-- **Accelerometer**: ±2g range, 104 Hz output data rate
-- **Gyroscope**: 250 dps range (used internally for orientation)
-- **Magnetometer**: 100 Hz output data rate (for yaw/compass heading)
-- **Orientation**: Roll, pitch calculated from accelerometer; yaw from magnetometer
-- **Event-driven**: Events fire automatically on significant movement (0.05g threshold)
-- **50ms polling**: Fast enough for responsive interactions
-
-## Technical Details
-
-- **Acceleration units**: g (1g ≈ 9.81 m/s²)
-- **Orientation units**: Degrees (-180° to +180° for roll/pitch, 0° to 360° for yaw)
-- **Event threshold**: 0.05g minimum change to trigger events
-- **I2C addresses**: Accelerometer/Gyroscope (0x6A), Magnetometer (0x1E)
-
 ## Error Handling
 
 Both `accel_read()` and `orientation_read()` will return `nil` if the sensors are not detected or fail to initialize:
@@ -118,17 +111,74 @@ else
 end
 ```
 
-## Key features:
+## Monome Protocol Integration
 
-- **Event-driven**: No need to constantly poll - events fire automatically on significant movement
-- **Threshold-based**: Only triggers when acceleration changes by more than 0.05g to avoid noise
-- **50ms polling**: Fast enough for responsive interactions
-- **6 parameters**: ax, ay, az (acceleration) + roll, pitch, yaw (orientation)
-- **Units**: Acceleration in g (±2g range), orientation in degrees
+When running in monome mode, accelerometer data is sent as tilt events using the standard monome protocol. The device sends tilt events automatically when acceleration changes significantly.
 
-The event system works just like `event_grid` does for button presses - define the function and it gets called automatically when the accelerometer detects movement.
+### Monome Tilt Events
 
-Event threshold is configurable in `device.cpp`:
-```cpp
-#define ACCEL_CHANGE_THRESHOLD 0.05f // Minimum change to trigger event
+The device sends tilt events with the following format:
+- **Command**: `0x81` (tilt event)
+- **Sensor number**: `0` (first tilt sensor)
+- **X axis**: 16-bit signed integer (high byte, low byte)
+- **Y axis**: 16-bit signed integer (high byte, low byte)  
+- **Z axis**: 16-bit signed integer (high byte, low byte)
+
+### Data Format
+
+Accelerometer values are scaled from ±2g float values to 16-bit signed integers:
+- **Scale factor**: 16384 (2^14)
+- **Range**: -32768 to +32767
+- **Resolution**: ~0.00012g per unit
+
+### Example Implementation
+
+In a monome application, you would handle tilt events like this:
+
+```lua
+-- Example in Lua (for monome applications)
+-- This would be implemented in a Lua-based monome app framework
+
+function handle_tilt_event(sensor, x_high, x_low, y_high, y_low, z_high, z_low)
+    -- Reconstruct 16-bit signed integers from high and low bytes
+    local x = bit32.bor(bit32.lshift(x_high, 8), x_low)
+    local y = bit32.bor(bit32.lshift(y_high, 8), y_low)
+    local z = bit32.bor(bit32.lshift(z_high, 8), z_low)
+    
+    -- Handle sign extension for negative values
+    if x > 32767 then x = x - 65536 end
+    if y > 32767 then y = y - 65536 end
+    if z > 32767 then z = z - 65536 end
+    
+    print('Tilt sensor ' .. sensor .. ' X:' .. x .. ' Y:' .. y .. ' Z:' .. z)
+    
+    -- Convert back to g units (divide by 16384)
+    local x_g = x / 16384.0
+    local y_g = y / 16384.0 
+    local z_g = z / 16384.0
+    
+    print('Acceleration (g) - X:' .. x_g .. ' Y:' .. y_g .. ' Z:' .. z_g)
+    
+    -- Use the values for your application
+    -- Example: control a parameter based on tilt
+    if x_g > 0.5 then
+        print('Tilted right')
+        updateParameter('pan', x_g)
+    elseif x_g < -0.5 then
+        print('Tilted left')
+        updateParameter('pan', x_g)
+    end
+    
+    if y_g > 0.5 then
+        print('Tilted forward')
+        updateParameter('tilt', y_g)
+    elseif y_g < -0.5 then
+        print('Tilted backward')
+        updateParameter('tilt', y_g)
+    end
+    
+    -- Use Z for pressure or intensity
+    local intensity = math.floor((z_g + 2.0) / 4.0 * 15)  -- Map ±2g to 0-15
+    updateParameter('intensity', intensity)
+end
 ```

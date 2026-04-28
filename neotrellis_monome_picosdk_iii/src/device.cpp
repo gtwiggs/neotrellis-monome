@@ -357,7 +357,23 @@ extern "C" void device_task() {
                         yaw = accel.calculateYaw(ax, ay, az, mx, my, mz);
                     }
                     
-                    vm_handle_accel_event(ax, ay, az, roll, pitch, yaw);
+                    // Send event based on mode
+                    if (mode == 0) {  // iii mode
+                        vm_handle_accel_event(ax, ay, az, roll, pitch, yaw);
+                    } else if (mode == 1) {  // monome mode
+                        // Convert float values to 16-bit signed integers for monome protocol
+                        // Scale accelerometer values (typically ±2g) to fit in 16-bit range
+                        int16_t ax_int = (int16_t)(ax * 16384.0f);  // Scale by 2^14 for ±2g range
+                        int16_t ay_int = (int16_t)(ay * 16384.0f);
+                        int16_t az_int = (int16_t)(az * 16384.0f);
+                        
+                        // Send tilt event (n=0 for first sensor)
+                        mdp.sendTiltEvent(0,
+                                        (int8_t)(ax_int >> 8), (int8_t)(ax_int & 0xFF),
+                                        (int8_t)(ay_int >> 8), (int8_t)(ay_int & 0xFF),
+                                        (int8_t)(az_int >> 8), (int8_t)(az_int & 0xFF));
+                    }
+                    
                     last_accel_x = ax;
                     last_accel_y = ay;
                     last_accel_z = az;
