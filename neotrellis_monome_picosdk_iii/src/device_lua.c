@@ -41,6 +41,23 @@ void vm_handle_grid_key(uint8_t x, uint8_t y, uint8_t z) {
 }
 
 // ---------------------------------------------------------------------------
+// vm_handle_accel_event — call Lua event_accel(x, y, z)
+// Called from device_task() in device.cpp.
+// ---------------------------------------------------------------------------
+void vm_handle_accel_event(float x, float y, float z) {
+    if (L == NULL) return;
+    lua_getglobal(L, "event_accel");
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+    lua_pushnumber(L, x);
+    lua_pushnumber(L, y);
+    lua_pushnumber(L, z);
+    l_report(L, docall(L, 3, 0));
+}
+
+// ---------------------------------------------------------------------------
 // Lua grid bindings
 // ---------------------------------------------------------------------------
 
@@ -99,6 +116,18 @@ static int l_grid_size_y(lua_State *l) {
     return 1;
 }
 
+static int l_accel_read(lua_State *l) {
+    float x, y, z;
+    if (device_accel_read(&x, &y, &z)) {
+        lua_pushnumber(l, x);
+        lua_pushnumber(l, y);
+        lua_pushnumber(l, z);
+        return 3;
+    } else {
+        return 0; // error
+    }
+}
+
 static const luaL_Reg device_lib[] = {
     {"grid_led",       l_grid_led},
     {"grid_led_get",   l_grid_led_get},
@@ -108,6 +137,7 @@ static const luaL_Reg device_lib[] = {
     {"grid_refresh",   l_grid_refresh},
     {"grid_size_x",    l_grid_size_x},
     {"grid_size_y",    l_grid_size_y},
+    {"accel_read",     l_accel_read},
     {NULL, NULL}
 };
 

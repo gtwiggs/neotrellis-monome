@@ -14,6 +14,7 @@
 // C++ headers first (cannot be inside extern "C")
 #include "MonomeSerialDevice.h"
 #include "Adafruit_seesaw/Adafruit_NeoTrellis.h"
+#include "LSM6DS3.h"
 
 #include "config.h"
 #include "pico/time.h"
@@ -63,6 +64,11 @@ Adafruit_MultiTrellis trellis((Adafruit_NeoTrellis *)trellis_array,
                               NUM_ROWS / 4, NUM_COLS / 4);
 
 // ---------------------------------------------------------------------------
+// LSM6DS3 Accelerometer
+// ---------------------------------------------------------------------------
+LSM6DS3 accel(I2C_BUS);
+
+// ---------------------------------------------------------------------------
 // MonomeSerialDevice — used in mode 1 (monome protocol)
 // ---------------------------------------------------------------------------
 MonomeSerialDevice mdp;
@@ -85,6 +91,17 @@ static struct {
     uint8_t y;
     uint8_t z;
 } grid_events[GRID_EVENTS_MAX];
+
+// ---------------------------------------------------------------------------
+// Accelerometer event tracking
+// ---------------------------------------------------------------------------
+static float last_accel_x = 0.0f;
+static float last_accel_y = 0.0f;
+static float last_accel_z = 0.0f;
+static bool accel_initialized = false;
+static uint32_t last_accel_time = 0;
+#define ACCEL_UPDATE_INTERVAL_MS 50  // Update every 50ms
+#define ACCEL_CHANGE_THRESHOLD 0.05f // Minimum change to trigger event
 
 static void grid_add_event(uint8_t x, uint8_t y, uint8_t z) {
     if (grid_event_count < GRID_EVENTS_MAX) {
@@ -230,6 +247,11 @@ extern "C" void mode_check() {
 extern "C" void device_init() {
     trellis.begin();
 
+    // Initialize accelerometer
+    if (!accel.begin()) {
+        // Handle initialization failure (e.g., log error, set a flag, etc.)
+    }
+
     for (uint8_t x = 0; x < NUM_COLS; x++) {
         for (uint8_t y = 0; y < NUM_ROWS; y++) {
             trellis.activateKey(x, y, SEESAW_KEYPAD_EDGE_RISING, true);
@@ -289,6 +311,35 @@ extern "C" void device_task() {
         sendLeds_iii();
         grid_dirty = false;
     }
+
+    // Poll accelerometer for events
+    uint32_t current_time = to_ms_since_boot(get_absolute_time());
+    if (current_time - last_accel_time >= ACCEL_UPDATE_INTERVAL_MS) {
+        float x, y, z;
+        if (device_accel_read(&x, &y, &z)) {
+            if (!accel_initialized) {
+                last_accel_x = x;
+                last_accel_y = y;
+                last_accel_z = z;
+                accel_initialized = true;
+            } else {
+                // Check for significant change
+                float dx = fabsf(x - last_accel_x);
+                float dy = fabsf(y - last_accel_y);
+                float dz = fabsf(z - last_accel_z);
+                if (dx > ACCEL_CHANGE_THRESHOLD ||
+                    dy > ACCEL_CHANGE_THRESHOLD ||
+                    dz > ACCEL_CHANGE_THRESHOLD) {
+                    vm_handle_accel_event(x, y, z);
+                    last_accel_x = x;
+                    last_accel_y = y;
+                    last_accel_z = z;
+                }
+            }
+        }
+        last_accel_time = current_time;
+    }
+
     tud_cdc_n_write_flush(0);
 }
 
@@ -353,6 +404,10 @@ extern "C" void device_color_set(int r, int g, int b) {
     grid_dirty = true;
 }
 
+extern "C" int device_accel_read(float *x, float *y, float *z) {
+    return accel.readAccel(*x, *y, *z) ? 1 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Device info strings
 // ---------------------------------------------------------------------------
@@ -366,7 +421,9 @@ static const char *device_help_str =
     "  grid_intensity(z)\n"
     "  grid_refresh()\n"
     "  grid_size_x()\n"
-    "  grid_size_y()\n";
+    "  grid_size_y()\n"
+    "  accel_read() -> x,y,z\n"
+    "  event_accel(x,y,z)\n";
 
 extern "C" const char *device_help_txt() { return device_help_str; }
 extern "C" const char *device_id()       { return "neotrellis-grid"; }

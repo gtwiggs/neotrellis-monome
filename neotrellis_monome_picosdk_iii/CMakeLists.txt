@@ -67,6 +67,7 @@ add_executable(neotrellis-iii
     src/device.cpp
     src/MonomeSerialDevice.cpp
     src/debug.cpp
+    src/LSM6DS3.cpp
     src/Adafruit_seesaw/Adafruit_NeoTrellis.cpp
     src/Adafruit_seesaw/Adafruit_seesaw.cpp
     src/Adafruit_seesaw/Adafruit_I2CDevice.cpp
