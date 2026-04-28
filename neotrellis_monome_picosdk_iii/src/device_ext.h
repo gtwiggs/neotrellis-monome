@@ -19,10 +19,11 @@ extern void device_color_set(int r, int g, int b);
 
 // Defined in device_lua.c; called from device_task() in device.cpp.
 extern void vm_handle_grid_key(uint8_t x, uint8_t y, uint8_t z);
-extern void vm_handle_accel_event(float x, float y, float z);
+extern void vm_handle_accel_event(float ax, float ay, float az, float roll, float pitch, float yaw);
 // ---------------------------------------------------------------------------
 // Accelerometer C API
 // ---------------------------------------------------------------------------
 extern int device_accel_read(float *x, float *y, float *z);
+extern int device_orientation_read(float *roll, float *pitch, float *yaw);
 
 #endif // DINKII_DEVICE_EXT_H

@@ -41,20 +41,23 @@ void vm_handle_grid_key(uint8_t x, uint8_t y, uint8_t z) {
 }
 
 // ---------------------------------------------------------------------------
-// vm_handle_accel_event — call Lua event_accel(x, y, z)
+// vm_handle_accel_event — call Lua event_accel(ax, ay, az, roll, pitch, yaw)
 // Called from device_task() in device.cpp.
 // ---------------------------------------------------------------------------
-void vm_handle_accel_event(float x, float y, float z) {
+void vm_handle_accel_event(float ax, float ay, float az, float roll, float pitch, float yaw) {
     if (L == NULL) return;
     lua_getglobal(L, "event_accel");
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         return;
     }
-    lua_pushnumber(L, x);
-    lua_pushnumber(L, y);
-    lua_pushnumber(L, z);
-    l_report(L, docall(L, 3, 0));
+    lua_pushnumber(L, ax);
+    lua_pushnumber(L, ay);
+    lua_pushnumber(L, az);
+    lua_pushnumber(L, roll);
+    lua_pushnumber(L, pitch);
+    lua_pushnumber(L, yaw);
+    l_report(L, docall(L, 6, 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +131,18 @@ static int l_accel_read(lua_State *l) {
     }
 }
 
+static int l_orientation_read(lua_State *l) {
+    float roll, pitch, yaw;
+    if (device_orientation_read(&roll, &pitch, &yaw)) {
+        lua_pushnumber(l, roll);
+        lua_pushnumber(l, pitch);
+        lua_pushnumber(l, yaw);
+        return 3;
+    } else {
+        return 0; // error
+    }
+}
+
 static const luaL_Reg device_lib[] = {
     {"grid_led",       l_grid_led},
     {"grid_led_get",   l_grid_led_get},
@@ -138,6 +153,7 @@ static const luaL_Reg device_lib[] = {
     {"grid_size_x",    l_grid_size_x},
     {"grid_size_y",    l_grid_size_y},
     {"accel_read",     l_accel_read},
+    {"orientation_read", l_orientation_read},
     {NULL, NULL}
 };
 

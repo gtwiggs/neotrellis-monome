@@ -10,18 +10,28 @@
 // Registers
 #define LSM6DS3_WHO_AM_I 0x0F
 #define LSM6DS3_CTRL1_XL 0x10
+#define LSM6DS3_CTRL2_G 0x11
 #define LSM6DS3_OUTX_L_XL 0x28
 #define LSM6DS3_OUTX_H_XL 0x29
 #define LSM6DS3_OUTY_L_XL 0x2A
 #define LSM6DS3_OUTY_H_XL 0x2B
 #define LSM6DS3_OUTZ_L_XL 0x2C
 #define LSM6DS3_OUTZ_H_XL 0x2D
+#define LSM6DS3_OUTX_L_G 0x22
+#define LSM6DS3_OUTX_H_G 0x23
+#define LSM6DS3_OUTY_L_G 0x24
+#define LSM6DS3_OUTY_H_G 0x25
+#define LSM6DS3_OUTZ_L_G 0x26
+#define LSM6DS3_OUTZ_H_G 0x27
 
 class LSM6DS3 {
 public:
     LSM6DS3(i2c_inst_t *i2c_port, uint8_t addr = LSM6DS3_ADDR);
     bool begin();
     bool readAccel(float &x, float &y, float &z);
+    bool readGyro(float &x, float &y, float &z);
+    void calculateOrientation(float ax, float ay, float az, float &roll, float &pitch);
+    float calculateYaw(float ax, float ay, float az, float mx, float my, float mz);
     uint8_t whoAmI();
 
 private:

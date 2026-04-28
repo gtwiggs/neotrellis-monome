@@ -12,9 +12,15 @@
  */
 
 // C++ headers first (cannot be inside extern "C")
+#include <math.h>
 #include "MonomeSerialDevice.h"
 #include "Adafruit_seesaw/Adafruit_NeoTrellis.h"
 #include "LSM6DS3.h"
+#include "LIS2MDL.h"
+
+// Undefine Arduino-style min/max macros that conflict with C++ stdlib
+#undef min
+#undef max
 
 #include "config.h"
 #include "pico/time.h"
@@ -67,6 +73,11 @@ Adafruit_MultiTrellis trellis((Adafruit_NeoTrellis *)trellis_array,
 // LSM6DS3 Accelerometer
 // ---------------------------------------------------------------------------
 LSM6DS3 accel(I2C_BUS);
+
+// ---------------------------------------------------------------------------
+// LIS2MDL Magnetometer
+// ---------------------------------------------------------------------------
+LIS2MDL mag(I2C_BUS);
 
 // ---------------------------------------------------------------------------
 // MonomeSerialDevice — used in mode 1 (monome protocol)
@@ -252,6 +263,11 @@ extern "C" void device_init() {
         // Handle initialization failure (e.g., log error, set a flag, etc.)
     }
 
+    // Initialize magnetometer
+    if (!mag.begin()) {
+        // Handle initialization failure
+    }
+
     for (uint8_t x = 0; x < NUM_COLS; x++) {
         for (uint8_t y = 0; y < NUM_ROWS; y++) {
             trellis.activateKey(x, y, SEESAW_KEYPAD_EDGE_RISING, true);
@@ -315,25 +331,36 @@ extern "C" void device_task() {
     // Poll accelerometer for events
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
     if (current_time - last_accel_time >= ACCEL_UPDATE_INTERVAL_MS) {
-        float x, y, z;
-        if (device_accel_read(&x, &y, &z)) {
+        float ax, ay, az;
+        if (device_accel_read(&ax, &ay, &az)) {
             if (!accel_initialized) {
-                last_accel_x = x;
-                last_accel_y = y;
-                last_accel_z = z;
+                last_accel_x = ax;
+                last_accel_y = ay;
+                last_accel_z = az;
                 accel_initialized = true;
             } else {
                 // Check for significant change
-                float dx = fabsf(x - last_accel_x);
-                float dy = fabsf(y - last_accel_y);
-                float dz = fabsf(z - last_accel_z);
+                float dx = fabsf(ax - last_accel_x);
+                float dy = fabsf(ay - last_accel_y);
+                float dz = fabsf(az - last_accel_z);
                 if (dx > ACCEL_CHANGE_THRESHOLD ||
                     dy > ACCEL_CHANGE_THRESHOLD ||
                     dz > ACCEL_CHANGE_THRESHOLD) {
-                    vm_handle_accel_event(x, y, z);
-                    last_accel_x = x;
-                    last_accel_y = y;
-                    last_accel_z = z;
+                    // Calculate orientation
+                    float roll, pitch;
+                    accel.calculateOrientation(ax, ay, az, roll, pitch);
+                    
+                    // Calculate yaw if magnetometer available
+                    float yaw = 0.0f;
+                    float mx, my, mz;
+                    if (mag.readMag(mx, my, mz)) {
+                        yaw = accel.calculateYaw(ax, ay, az, mx, my, mz);
+                    }
+                    
+                    vm_handle_accel_event(ax, ay, az, roll, pitch, yaw);
+                    last_accel_x = ax;
+                    last_accel_y = ay;
+                    last_accel_z = az;
                 }
             }
         }
@@ -408,6 +435,21 @@ extern "C" int device_accel_read(float *x, float *y, float *z) {
     return accel.readAccel(*x, *y, *z) ? 1 : 0;
 }
 
+extern "C" int device_orientation_read(float *roll, float *pitch, float *yaw) {
+    float ax, ay, az;
+    if (!accel.readAccel(ax, ay, az)) return 0;
+    accel.calculateOrientation(ax, ay, az, *roll, *pitch);
+    
+    // Try to read magnetometer for yaw
+    float mx, my, mz;
+    if (mag.readMag(mx, my, mz)) {
+        *yaw = accel.calculateYaw(ax, ay, az, mx, my, mz);
+    } else {
+        *yaw = 0.0f; // Magnetometer not available
+    }
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Device info strings
 // ---------------------------------------------------------------------------
@@ -422,8 +464,9 @@ static const char *device_help_str =
     "  grid_refresh()\n"
     "  grid_size_x()\n"
     "  grid_size_y()\n"
-    "  accel_read() -> x,y,z\n"
-    "  event_accel(x,y,z)\n";
+    "  accel_read() -> ax,ay,az\n"
+    "  orientation_read() -> roll,pitch,yaw\n"
+    "  event_accel(ax,ay,az,roll,pitch,yaw)\n";
 
 extern "C" const char *device_help_txt() { return device_help_str; }
 extern "C" const char *device_id()       { return "neotrellis-grid"; }
